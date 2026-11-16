@@ -154,7 +154,7 @@ async function deleteBookText(id) {
 }
 
 // ---------- Вход ----------
-$('#login').onclick = () => auth.signInWithRedirect(new firebase.auth.GoogleAuthProvider());
+$('#login').onclick = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(e => alert('Ошибка входа: ' + e.message));
 $('#logout').onclick = () => auth.signOut();
 auth.getRedirectResult().catch(e => alert('Ошибка входа: ' + e.message));
 auth.onAuthStateChanged(u => {
