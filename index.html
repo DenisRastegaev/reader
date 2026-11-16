@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Читалка">
+<title>Читалка</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+:root{--bg:#fbf8f2;--fg:#222;--mut:#888;--acc:#2a6df4;--card:#fff;--line:#e5e0d6}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:-apple-system,system-ui,sans-serif}
+#app{height:100%;display:flex;flex-direction:column}
+.view{display:none;flex:1;min-height:0;flex-direction:column}
+.view.on{display:flex}
+header{padding:calc(env(safe-area-inset-top,0px) + 10px) 14px 10px;background:var(--card);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
+header h1{font-size:17px;margin:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+button{font:inherit;border:0;background:var(--acc);color:#fff;border-radius:10px;padding:8px 12px;cursor:pointer}
+button.ghost{background:transparent;color:var(--acc);padding:6px 8px}
+button.del{background:#e5484d;padding:6px 10px}
+select{font:inherit;padding:6px;border-radius:8px;border:1px solid var(--line);background:#fff;max-width:120px}
+.list{flex:1;overflow:auto;padding:12px}
+.item{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;display:flex;align-items:center;gap:10px;cursor:pointer}
+.item .main{flex:1;min-width:0}
+.item .t{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .s{font-size:13px;color:var(--mut);margin-top:3px}
+.cont{border-color:var(--acc)}
+.empty{color:var(--mut);text-align:center;padding:40px 10px;line-height:1.5}
+.center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:20px;text-align:center}
+#status{padding:8px 14px;font-size:14px;color:var(--acc);display:none;background:var(--card)}
+.search{margin:10px 12px 0;padding:10px;border-radius:10px;border:1px solid var(--line);font:inherit;width:calc(100% - 24px);background:#fff}
+nav{display:flex;border-top:1px solid var(--line);background:var(--card);padding-bottom:env(safe-area-inset-bottom,0px)}
+nav button{flex:1;background:none;color:var(--mut);border-radius:0;padding:12px}
+nav button.on{color:var(--acc);font-weight:600}
+#text{position:relative;flex:1;overflow:auto;padding:18px 20px 80px;font-size:19px;line-height:1.65;-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
+#text p{margin:0 0 .9em}
+#pop{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:0 8px 30px rgba(0,0,0,.2);display:none;z-index:10}
+#pop.on{display:block}
+#psrc{font-size:17px;font-weight:600;margin-bottom:6px;word-break:break-word}
+#ptr{font-size:16px;color:#333;margin-bottom:12px;min-height:22px}
+.row{display:flex;gap:8px;justify-content:flex-end}
+</style>
+</head>
+<body>
+<div id="app">
+
+<section id="vLogin" class="view">
+  <header><h1>Читалка</h1></header>
+  <div class="center">
+    <p>Войдите через Google, чтобы книги и словарь синхронизировались между устройствами.</p>
+    <button id="login">Войти через Google</button>
+  </div>
+</section>
+
+<section id="vLib" class="view">
+  <header>
+    <h1>Библиотека</h1>
+    <select id="lang"></select>
+    <button class="ghost" id="logout">Выйти</button>
+    <button id="addBtn">+ Книга</button>
+    <input type="file" id="file" hidden accept=".epub,.fb2,.xml,application/epub+zip,application/x-fictionbook+xml,application/octet-stream">
+  </header>
+  <div id="status"></div>
+  <div class="list" id="libList"></div>
+</section>
+
+<section id="vRead" class="view">
+  <header>
+    <button class="ghost" id="back">← Назад</button>
+    <h1 id="rtitle"></h1>
+    <button class="ghost" id="fsm">A−</button>
+    <button class="ghost" id="fsp">A+</button>
+  </header>
+  <div id="text"></div>
+</section>
+
+<section id="vWords" class="view">
+  <header><h1>Словарь</h1></header>
+  <input type="search" class="search" id="q" placeholder="Поиск слова">
+  <div class="list" id="wordList"></div>
+</section>
+
+<nav id="nav">
+  <button id="tabLib" class="on">Книги</button>
+  <button id="tabWords">Слова</button>
+</nav>
+</div>
+
+<div id="pop">
+  <div id="psrc"></div>
+  <div id="ptr">…</div>
+  <div class="row">
+    <button class="ghost" id="pclose">Закрыть</button>
+    <button id="padd">В словарь</button>
+  </div>
+</div>
+
+<script>
+// ============ НАСТРОЙКА: вставьте сюда данные из Firebase (шаг 5) ============
+const FB_CONFIG = {
+  apiKey: "ВСТАВЬТЕ_СЮДА",
+  authDomain: "ВСТАВЬТЕ_СЮДА",
+  projectId: "ВСТАВЬТЕ_СЮДА",
+  appId: "ВСТАВЬТЕ_СЮДА"
+};
+// ============================================================================
+
+firebase.initializeApp(FB_CONFIG);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const LANGS = [['en','Английский'],['de','Немецкий'],['fr','Французский'],['es','Испанский'],['it','Итальянский'],['pl','Польский'],['uk','Украинский'],['tr','Турецкий']];
+const DEF = { lib: [], words: [], pos: {}, fs: 19, lang: 'en', last: null };
+
+let S = { ...DEF };
+let uid = null, unsub = null;
+let cur = null, curParas = [], picked = '', cache = {}, scrollT;
+
+$('#lang').innerHTML = LANGS.map(([c, n]) => `<option value="${c}">${n}</option>`).join('');
+$('#lang').onchange = e => { S.lang = e.target.value; saveState(); };
+
+function status(t) { const e = $('#status'); e.textContent = t; e.style.display = t ? 'block' : 'none'; }
+
+// ---------- Синхронизация ----------
+const userRef = () => db.collection('users').doc(uid);
+function saveState() {
+  if (!uid) return Promise.resolve();
+  return userRef().set(S).catch(e => alert('Не сохранилось: ' + e.message));
+}
+function saveBookText(id, paras) {
+  const chunks = [];
+  let part = [], size = 0;
+  for (const p of paras) {
+    part.push(p); size += p.length;
+    if (size > 400000) { chunks.push(part); part = []; size = 0; }
+  }
+  if (part.length) chunks.push(part);
+  const col = userRef().collection('books').doc(id).collection('chunks');
+  return Promise.all(chunks.map((c, i) => col.doc(String(i)).set({ paras: c })));
+}
+async function loadBookText(id) {
+  const snap = await userRef().collection('books').doc(id).collection('chunks').get();
+  return snap.docs.sort((a, b) => +a.id - +b.id).flatMap(d => d.data().paras);
+}
+async function deleteBookText(id) {
+  const snap = await userRef().collection('books').doc(id).collection('chunks').get();
+  await Promise.all(snap.docs.map(d => d.ref.delete()));
+}
+
+// ---------- Вход ----------
+$('#login').onclick = () => auth.signInWithRedirect(new firebase.auth.GoogleAuthProvider());
+$('#logout').onclick = () => auth.signOut();
+auth.getRedirectResult().catch(e => alert('Ошибка входа: ' + e.message));
+auth.onAuthStateChanged(u => {
+  if (unsub) { unsub(); unsub = null; }
+  if (!u) { uid = null; S = { ...DEF }; go('vLogin'); return; }
+  uid = u.uid;
+  unsub = userRef().onSnapshot(d => {
+    if (d.exists) S = { ...DEF, ...d.data() };
+    $('#lang').value = S.lang;
+    refresh();
+  }, e => alert('Нет доступа к данным: ' + e.message));
+  go('vLib');
+});
+
+// ---------- Экраны ----------
+function go(id) {
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('on', v.id === id));
+  $('#nav').style.display = (id === 'vRead' || id === 'vLogin') ? 'none' : 'flex';
+  $('#tabLib').classList.toggle('on', id === 'vLib');
+  $('#tabWords').classList.toggle('on', id === 'vWords');
+  refresh();
+}
+function refresh() {
+  if ($('#vLib').classList.contains('on')) renderLib();
+  if ($('#vWords').classList.contains('on')) renderWords();
+}
+$('#tabLib').onclick = () => go('vLib');
+$('#tabWords').onclick = () => go('vWords');
+
+// ---------- Библиотека ----------
+function renderLib() {
+  const el = $('#libList');
+  if (!S.lib.length) {
+    el.innerHTML = '<div class="empty">Книг пока нет.<br>Нажмите «+ Книга» и выберите файл FB2 или EPUB из «Файлов».</div>';
+    return;
+  }
+  let html = '';
+  const lb = S.lib.find(b => b.id === S.last);
+  if (lb) html += `<div class="item cont" data-id="${lb.id}"><div class="main"><div class="t">▶ Продолжить: ${esc(lb.title)}</div></div></div>`;
+  html += S.lib.map(b => {
+    const p = S.pos[b.id] || 0;
+    const pc = b.n ? Math.round(p / b.n * 100) : 0;
+    return `<div class="item" data-id="${b.id}"><div class="main"><div class="t">${esc(b.title)}</div>
+      <div class="s">${b.fmt.toUpperCase()} · прочитано ${pc}%</div></div>
+      <button class="del" data-del="${b.id}">✕</button></div>`;
+  }).join('');
+  el.innerHTML = html;
+}
+$('#libList').onclick = e => {
+  const d = e.target.closest('[data-del]');
+  if (d) return del(d.dataset.del);
+  const it = e.target.closest('.item');
+  if (it) openBook(it.dataset.id);
+};
+async function del(id) {
+  if (!confirm('Удалить книгу из библиотеки?')) return;
+  S.lib = S.lib.filter(b => b.id !== id);
+  delete S.pos[id];
+  if (S.last === id) S.last = null;
+  saveState();
+  deleteBookText(id).catch(e => console.error(e));
+  refresh();
+}
+$('#addBtn').onclick = () => $('#file').click();
+$('#file').onchange = async e => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  try {
+    status('Загружаю книгу, подождите…');
+    const buf = await f.arrayBuffer();
+    const ext = f.name.split('.').pop().toLowerCase();
+    const b = ext === 'epub' ? await parseEPUB(buf) : parseFB2(buf);
+    if (!b.paras.length) throw new Error('в файле не найден текст');
+    const id = 'b' + Date.now();
+    await saveBookText(id, b.paras);
+    S.lib.push({ id, title: b.title || f.name, fmt: ext, n: b.paras.length });
+    await saveState();
+    status('');
+    refresh();
+  } catch (err) {
+    status('');
+    alert('Не удалось открыть книгу: ' + err.message);
+  }
+};
+
+// ---------- Разбор файлов ----------
+function parseFB2(buf) {
+  const head = new TextDecoder().decode(buf.slice(0, 300));
+  const enc = (/encoding="([^"]+)"/.exec(head) || [])[1] || 'utf-8';
+  const xml = new TextDecoder(enc).decode(buf);
+  const d = new DOMParser().parseFromString(xml, 'application/xml');
+  return {
+    title: (d.querySelector('book-title') || {}).textContent || '',
+    paras: [...d.querySelectorAll('body p')].map(p => p.textContent.replace(/\s+/g, ' ').trim()).filter(Boolean)
+  };
+}
+async function parseEPUB(buf) {
+  const z = await JSZip.loadAsync(buf);
+  const P = s => new DOMParser().parseFromString(s, 'application/xml');
+  const opfPath = P(await z.file('META-INF/container.xml').async('string')).querySelector('rootfile').getAttribute('full-path');
+  const base = opfPath.slice(0, opfPath.lastIndexOf('/') + 1);
+  const opf = P(await z.file(opfPath).async('string'));
+  const man = {};
+  opf.querySelectorAll('manifest > item').forEach(i => man[i.getAttribute('id')] = i.getAttribute('href'));
+  const title = (opf.querySelector('title') || {}).textContent || '';
+  const paras = [];
+  for (const ref of opf.querySelectorAll('spine > itemref')) {
+    const href = man[ref.getAttribute('idref')];
+    const f = href && z.file(base + decodeURIComponent(href));
+    if (!f) continue;
+    const doc = new DOMParser().parseFromString(await f.async('string'), 'text/html');
+    doc.querySelectorAll('p,h1,h2,h3,h4,h5,h6').forEach(p => {
+      const t = p.textContent.replace(/\s+/g, ' ').trim();
+      if (t) paras.push(t);
+    });
+  }
+  return { title, paras };
+}
+
+// ---------- Чтение ----------
+async function openBook(id) {
+  const b = S.lib.find(x => x.id === id);
+  if (!b) return;
+  status('Открываю книгу…');
+  try {
+    curParas = await loadBookText(id);
+  } catch (e) {
+    status('');
+    alert('Не удалось загрузить книгу: ' + e.message);
+    return;
+  }
+  status('');
+  cur = b;
+  S.last = id;
+  saveState();
+  $('#rtitle').textContent = b.title;
+  $('#text').innerHTML = curParas.map(t => `<p>${esc(t)}</p>`).join('');
+  $('#text').style.fontSize = S.fs + 'px';
+  go('vRead');
+  restore();
+}
+function restore() {
+  const el = $('#text').children[S.pos[cur.id] || 0];
+  if (el) $('#text').scrollTop = el.offsetTop;
+}
+function savePos() {
+  if (!cur || !$('#vRead').classList.contains('on')) return;
+  const box = $('#text');
+  const top = box.getBoundingClientRect().top;
+  let idx = 0;
+  for (let i = 0; i < box.children.length; i++) {
+    if (box.children[i].getBoundingClientRect().bottom > top + 5) { idx = i; break; }
+  }
+  S.pos[cur.id] = idx;
+  saveState();
+}
+$('#text').addEventListener('scroll', () => { clearTimeout(scrollT); scrollT = setTimeout(savePos, 1500); });
+window.addEventListener('pagehide', savePos);
+document.addEventListener('visibilitychange', () => { if (document.hidden) savePos(); });
+$('#back').onclick = () => { savePos(); $('#pop').classList.remove('on'); go('vLib'); };
+$('#fsp').onclick = () => changeFs(2);
+$('#fsm').onclick = () => changeFs(-2);
+function changeFs(d) {
+  savePos();
+  S.fs = Math.min(30, Math.max(14, S.fs + d));
+  $('#text').style.fontSize = S.fs + 'px';
+  saveState();
+  restore();
+}
+
+// ---------- Перевод (MyMemory) ----------
+async function tr(s) {
+  const r = await fetch('https://api.mymemory.translated.net/get?q=' + encodeURIComponent(s) + '&langpair=' + S.lang + '|ru');
+  const j = await r.json();
+  if (String(j.responseStatus) !== '200') throw new Error(j.responseDetails || 'ошибка перевода');
+  return j.responseData.translatedText;
+}
+function onSel() {
+  setTimeout(() => {
+    const s = String(window.getSelection()).trim();
+    if (!s || s.length > 300) return;
+    showPop(s);
+  }, 250);
+}
+$('#text').addEventListener('touchend', onSel);
+$('#text').addEventListener('mouseup', onSel);
+async function showPop(s) {
+  picked = s;
+  const key = S.lang + '|' + s;
+  $('#psrc').textContent = s;
+  $('#padd').textContent = 'В словарь';
+  $('#padd').disabled = false;
+  $('#pop').classList.add('on');
+  $('#ptr').textContent = 'Перевожу…';
+  try {
+    const t = cache[key] || (cache[key] = await tr(s));
+    if (picked === s) $('#ptr').textContent = t;
+  } catch (e) {
+    if (picked === s) $('#ptr').textContent = 'Не удалось перевести: ' + e.message;
+  }
+}
+$('#pclose').onclick = () => $('#pop').classList.remove('on');
+$('#padd').onclick = () => {
+  const w = picked;
+  const t = cache[S.lang + '|' + w];
+  if (!w || !t) return;
+  if (S.words.some(x => x.w.toLowerCase() === w.toLowerCase())) {
+    $('#padd').textContent = 'Уже есть';
+    return;
+  }
+  S.words.unshift({ w, t, b: cur ? cur.title : '', d: Date.now() });
+  saveState();
+  $('#padd').textContent = 'Добавлено ✓';
+  $('#padd').disabled = true;
+};
+
+// ---------- Словарь ----------
+function renderWords() {
+  const q = $('#q').value.trim().toLowerCase();
+  const list = S.words.filter(x => !q || x.w.toLowerCase().includes(q) || x.t.toLowerCase().includes(q));
+  $('#wordList').innerHTML = list.length
+    ? list.map(x => `<div class="item"><div class="main"><div class="t">${esc(x.w)}</div>
+        <div class="s">${esc(x.t)}${x.b ? ' · ' + esc(x.b) : ''}</div></div>
+        <button class="del" data-d="${x.d}">✕</button></div>`).join('')
+    : '<div class="empty">Слов пока нет.<br>Выделите слово в книге и нажмите «В словарь».</div>';
+}
+$('#q').oninput = renderWords;
+$('#wordList').onclick = e => {
+  const b = e.target.closest('[data-d]');
+  if (!b) return;
+  S.words = S.words.filter(x => String(x.d) !== b.dataset.d);
+  saveState();
+  renderWords();
+};
+
+// ---------- Старт ----------
+go('vLogin');
+</script>
+</body>
+</html>
