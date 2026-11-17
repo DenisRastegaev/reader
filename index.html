@@ -12,6 +12,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <style>
 :root{--bg:#fbf8f2;--fg:#222;--mut:#888;--acc:#2a6df4;--card:#fff;--line:#e5e0d6}
+:root[data-theme=dark]{--bg:#16181d;--fg:#e8e8e8;--mut:#8a8f98;--acc:#4f8cff;--card:#23262d;--line:#33373f;color-scheme:dark}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:-apple-system,system-ui,sans-serif}
 #app{height:100%;display:flex;flex-direction:column}
@@ -22,7 +23,7 @@ header h1{font-size:17px;margin:0;flex:1;overflow:hidden;text-overflow:ellipsis;
 button{font:inherit;border:0;background:var(--acc);color:#fff;border-radius:10px;padding:8px 12px;cursor:pointer}
 button.ghost{background:transparent;color:var(--acc);padding:6px 8px}
 button.del{background:#e5484d;padding:6px 10px}
-select{font:inherit;padding:6px;border-radius:8px;border:1px solid var(--line);background:#fff;max-width:120px}
+select{font:inherit;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg);max-width:120px}
 .list{flex:1;overflow:auto;padding:12px}
 .item{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;display:flex;align-items:center;gap:10px;cursor:pointer}
 .item .main{flex:1;min-width:0}
@@ -32,7 +33,7 @@ select{font:inherit;padding:6px;border-radius:8px;border:1px solid var(--line);b
 .empty{color:var(--mut);text-align:center;padding:40px 10px;line-height:1.5}
 .center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:20px;text-align:center}
 #status{padding:8px 14px;font-size:14px;color:var(--acc);display:none;background:var(--card)}
-.search{margin:10px 12px 0;padding:10px;border-radius:10px;border:1px solid var(--line);font:inherit;width:calc(100% - 24px);background:#fff}
+.search{margin:10px 12px 0;padding:10px;border-radius:10px;border:1px solid var(--line);font:inherit;width:calc(100% - 24px);background:var(--card);color:var(--fg)}
 nav{display:flex;border-top:1px solid var(--line);background:var(--card);padding-bottom:env(safe-area-inset-bottom,0px)}
 nav button{flex:1;background:none;color:var(--mut);border-radius:0;padding:12px}
 nav button.on{color:var(--acc);font-weight:600}
@@ -41,8 +42,10 @@ nav button.on{color:var(--acc);font-weight:600}
 #pop{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:0 8px 30px rgba(0,0,0,.2);display:none;z-index:10}
 #pop.on{display:block}
 #psrc{font-size:17px;font-weight:600;margin-bottom:6px;word-break:break-word}
-#ptr{font-size:16px;color:#333;margin-bottom:12px;min-height:22px}
+#ptr{font-size:16px;color:var(--fg);margin-bottom:12px;min-height:22px}
 .row{display:flex;gap:8px;justify-content:flex-end}
+button.icon{background:transparent;font-size:26px;padding:2px 8px;line-height:1}
+button.icon:disabled{opacity:.5}
 </style>
 </head>
 <body>
@@ -60,6 +63,7 @@ nav button.on{color:var(--acc);font-weight:600}
   <header>
     <h1>Библиотека</h1>
     <select id="lang"></select>
+    <button class="ghost" id="theme" title="Тема">🌙</button>
     <button class="ghost" id="logout">Выйти</button>
     <button id="addBtn">+ Книга</button>
     <input type="file" id="file" hidden accept=".epub,.fb2,.xml,application/epub+zip,application/x-fictionbook+xml,application/octet-stream">
@@ -94,8 +98,7 @@ nav button.on{color:var(--acc);font-weight:600}
   <div id="psrc"></div>
   <div id="ptr">…</div>
   <div class="row">
-    <button class="ghost" id="pclose">Закрыть</button>
-    <button id="padd">В словарь</button>
+    <button class="icon" id="padd" title="В словарь">🔖</button>
   </div>
 </div>
 
@@ -126,6 +129,20 @@ $('#lang').innerHTML = LANGS.map(([c, n]) => `<option value="${c}">${n}</option>
 $('#lang').onchange = e => { S.lang = e.target.value; saveState(); };
 
 function status(t) { const e = $('#status'); e.textContent = t; e.style.display = t ? 'block' : 'none'; }
+
+// ---------- Тема ----------
+function applyTheme() {
+  const saved = localStorage.getItem('theme');
+  const dark = saved ? saved === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  $('#theme').textContent = dark ? '☀️' : '🌙';
+}
+$('#theme').onclick = () => {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  localStorage.setItem('theme', dark ? 'light' : 'dark');
+  applyTheme();
+};
+applyTheme();
 
 // ---------- Синхронизация ----------
 const userRef = () => db.collection('users').doc(uid);
@@ -346,7 +363,7 @@ async function showPop(s) {
   picked = s;
   const key = S.lang + '|' + s;
   $('#psrc').textContent = s;
-  $('#padd').textContent = 'В словарь';
+  $('#padd').textContent = '🔖';
   $('#padd').disabled = false;
   $('#pop').classList.add('on');
   $('#ptr').textContent = 'Перевожу…';
@@ -357,18 +374,21 @@ async function showPop(s) {
     if (picked === s) $('#ptr').textContent = 'Не удалось перевести: ' + e.message;
   }
 }
-$('#pclose').onclick = () => $('#pop').classList.remove('on');
+document.addEventListener('pointerdown', e => {
+  if ($('#pop').classList.contains('on') && !$('#pop').contains(e.target)) $('#pop').classList.remove('on');
+});
 $('#padd').onclick = () => {
   const w = picked;
   const t = cache[S.lang + '|' + w];
   if (!w || !t) return;
   if (S.words.some(x => x.w.toLowerCase() === w.toLowerCase())) {
-    $('#padd').textContent = 'Уже есть';
+    $('#padd').textContent = '✓';
+    $('#padd').disabled = true;
     return;
   }
   S.words.unshift({ w, t, b: cur ? cur.title : '', d: Date.now() });
   saveState();
-  $('#padd').textContent = 'Добавлено ✓';
+  $('#padd').textContent = '✓';
   $('#padd').disabled = true;
 };
 
